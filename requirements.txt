@@ -1,0 +1,9 @@
+requests
+psutil
+scapy
+requests
+speedtest-cli
+reportlab
+requests
+
+
