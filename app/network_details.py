@@ -41,7 +41,7 @@ class NetworkDetailsApp:
             if match:
                 return match.group(1).strip()
             else:
-                return "Not Available"
+                return "Not Available - Unknown Error"
 
         except Exception as e:
             return f"Error: {e}"
@@ -217,3 +217,92 @@ class NetworkDetailsApp:
     def get_current_date_time(self):
         now = datetime.datetime.now()
         return now.strftime("%Y-%m-%d %H:%M:%S")
+
+    def get_wifi_protocol(self):
+         try:
+            ssid = subprocess.check_output(["netsh", "wlan", "show", "interfaces"]).decode('utf-8')
+            match = re.search(r'Protocol\s+:\s+(.+)', ssid)
+            if match:
+               return match.group(1).strip()
+            else:
+               return "Not Available"
+         except Exception as e:
+            return "Not Available"
+
+    def get_security_type(self):
+        try:
+           ssid = subprocess.check_output(["netsh", "wlan", "show", "interfaces"]).decode('utf-8')
+           match = re.search(r'Authentication\s+:\s+(.+)', ssid)
+           if match:
+              return match.group(1).strip()
+           else:
+              return "Not Available"
+        except Exception as e:
+           return "Not Available"
+
+    def get_network_band(self):
+      try:
+         ssid = subprocess.check_output(["netsh", "wlan", "show", "interfaces"]).decode('utf-8')
+         match = re.search(r'Radio type\s+:\s+(.+)', ssid)
+         if match:
+            return match.group(1).strip()
+         else:
+            return "Not Available"
+      except Exception as e:
+          return "Not Available"
+
+    def get_network_channel(self):
+      try:
+         ssid = subprocess.check_output(["netsh", "wlan", "show", "interfaces"]).decode('utf-8')
+         match = re.search(r'Channel\s+:\s+(.+)', ssid)
+         if match:
+            return match.group(1).strip()
+         else:
+            return "Not Available"
+      except Exception as e:
+          return "Not Available"
+
+    def get_manufacturer(self):
+       try:
+          process = subprocess.Popen(['powershell', '-command', 'Get-NetAdapter | Select-Object -ExpandProperty Manufacturer'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+          stdout, stderr = process.communicate()
+          if process.returncode == 0:
+             output = stdout.decode('utf-8').strip()
+             if output:
+                return output
+             else:
+                return "Not Available"
+          else:
+             return "Not Available"
+       except Exception as e:
+           return "Not Available"
+
+    def get_description(self):
+        try:
+           process = subprocess.Popen(['powershell', '-command', 'Get-NetAdapter | Select-Object -ExpandProperty Description'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+           stdout, stderr = process.communicate()
+           if process.returncode == 0:
+              output = stdout.decode('utf-8').strip()
+              if output:
+                 return output
+              else:
+                 return "Not Available"
+           else:
+              return "Not Available"
+        except Exception as e:
+              return "Not Available"
+
+    def get_driver_version(self):
+        try:
+            process = subprocess.Popen(['powershell', '-command', 'Get-NetAdapter | Select-Object -ExpandProperty DriverVersion'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = process.communicate()
+            if process.returncode == 0:
+                output = stdout.decode('utf-8').strip()
+                if output:
+                  return output
+                else:
+                   return "Not Available"
+            else:
+                return "Not Available"
+        except Exception as e:
+            return "Not Available"
