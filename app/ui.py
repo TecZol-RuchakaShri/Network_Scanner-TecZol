@@ -1,14 +1,23 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
-from app.network_details import NetworkDetailsApp
-from app.network_scanner import NetworkScanner
-from app.utils import export_to_csv
+from tkinter import ttk, messagebox, scrolledtext
 import os
+import socket
 from app.network_details_window import NetworkDetailsWindow
+
+def get_local_ip():
+    try:
+      s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+      s.settimeout(0)
+      s.connect(('10.254.254.254', 1))
+      ip = s.getsockname()[0]
+      s.close()
+      return ip
+    except Exception:
+        return None
 
 
 class WiFiScannerApp:
-    def __init__(self, root):
+    def __init__(self, root, scan_callback, network_details_callback):
         self.root = root
         self.root.title("WiFi Analyzer & Scanner")
 
@@ -24,12 +33,10 @@ class WiFiScannerApp:
             messagebox.showerror("Error", "Icon not found: " + icon_path)
         self.root.state('zoomed')  # Start in full screen mode
 
-        self.network_details = NetworkDetailsApp(root)
-        self.network_scanner = NetworkScanner()
-
         self.results = []
         self.scanning = False
-
+        self.scan_callback = scan_callback # callback to the scan function.
+        self.network_details_callback = network_details_callback # callback to network detail function.
         # UI Elements
         self.create_widgets()
 
@@ -42,9 +49,14 @@ class WiFiScannerApp:
         ip_frame = tk.Frame(self.root)
         ip_frame.pack(pady=10, fill=tk.X, padx=20)  # fill=tk.X to expand horizontally
         tk.Label(ip_frame, text="IP Range: ", width=10).pack(side=tk.LEFT)
-        self.ip_range_entry = tk.Entry(ip_frame, width=30)
+        self.ip_range_entry = tk.Entry(ip_frame, width=25) # decreased the size of IP input
         self.ip_range_entry.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
         self.ip_range_entry.insert(0, "192.168.1.0/24")
+
+        # Button to get current IP
+        get_ip_button = tk.Button(ip_frame, text="Get IP", command=self.get_current_ip, width = 7) # added get IP button.
+        get_ip_button.pack(side=tk.LEFT, padx=5)
+
         tk.Button(ip_frame, text="Analyse Network", command=self.get_network_details, width=15).pack(side=tk.LEFT,
                                                                                                      padx=5)
 
@@ -92,7 +104,7 @@ class WiFiScannerApp:
         self.table.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
 
     def get_network_details(self):
-        NetworkDetailsWindow(self.root, self.network_details).grab_set()
+         self.network_details_callback()
 
     def start_scan(self):
         ip_range = self.ip_range_entry.get().strip()
@@ -108,8 +120,8 @@ class WiFiScannerApp:
         self.root.after(100, self._scan, ip_range)  # call the scanning in a separate thread not to stop the ui.
 
     def _scan(self, ip_range):
-        self.results = self.network_scanner.scan(ip_range)
-        self.populate_table(self.results)
+        results = self.scan_callback(ip_range)
+        self.populate_table(results)
         self.scanning = False  # Set scanning to false after the scan.
         self.scan_button.config(state=tk.NORMAL)  # Enable scan button
         self.stop_button.config(state=tk.DISABLED)  # disable the stop button
@@ -129,8 +141,8 @@ class WiFiScannerApp:
                                 self.update_progress)  # schedule next update if scanning and progress not completed.
 
     def populate_table(self, results):
-        self.table.delete(*self.table.get_children())
-        for result in results:
+         self.table.delete(*self.table.get_children())
+         for result in results:
             detail_button = tk.Button(self.table, text="Details",
                                       command=lambda ip=result[0]: self.show_device_details(ip))
             self.table.insert("", tk.END, values=result + (detail_button,))
@@ -140,11 +152,24 @@ class WiFiScannerApp:
         messagebox.showinfo("Device Details", f"Details for IP: {ip} will appear here!")
 
     def export_results(self):
-        if self.results:
-            export_to_csv(self.results)
-        else:
-            messagebox.showinfo("Export", "No results to export.")
+        # if self.results:
+        #     export_to_csv(self.results)
+        # else:
+        messagebox.showinfo("Export", "No results to export.")
 
     def exit_app(self):
         self.scanning = False
         self.root.destroy()  # Close the window
+
+    def get_current_ip(self):
+        local_ip = get_local_ip()
+        if local_ip:
+            self.ip_range_entry.delete(0,tk.END)
+            self.ip_range_entry.insert(0, local_ip)
+        else:
+            messagebox.showerror("Error", "Could not get local IP address.")
+
+def setup_ui(scan_callback, network_details_callback):
+    root = tk.Tk()
+    app = WiFiScannerApp(root, scan_callback, network_details_callback)
+    return root
