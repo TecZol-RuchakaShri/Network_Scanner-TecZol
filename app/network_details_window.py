@@ -127,11 +127,12 @@ class NetworkDetailsWindow(tk.Toplevel):
             story.append(Paragraph("Network Analysis Report by - TecZol WiFi Analyzer", title_style))
             story.append(Spacer(1, 0.2 * inch))
 
-            # Date and Network
+            # Date and Network in the same line
             date_time = self.network_details_app.get_current_date_time()
             ssid = self.details.get("SSID", "Not Available")
-            story.append(Paragraph(f"Date :- {date_time}", styles['Normal']))
-            story.append(Paragraph(f"Network :- {ssid}", styles['Normal']))
+
+            date_network = f"Date :- {date_time}   Network :- {ssid}"
+            story.append(Paragraph(date_network, styles['Normal']))
 
             story.append(Spacer(1, 0.2 * inch))
 
@@ -167,17 +168,29 @@ class NetworkDetailsWindow(tk.Toplevel):
             table = Table(data)
             table.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'LEFT'),
                                        ('FONTSIZE', (0, 0), (-1, -1), 10),
-
+                                       ('LEADING', (0, 0), (-1, -1), 14),  # Add 1.5 line spacing (approx)
                                        ]))  # aligns columns to left, and sets the font size of the content of the table.
             story.append(table)
-
             story.append(Spacer(1, 0.2 * inch))
 
-            story.append(Paragraph(f"In here it should display SSID:  {ssid}", styles['Normal']))
-            story.append(Paragraph(f"Protocol: [example :- Wi-Fi 4 (802.11n)]", styles['Normal']))
-            story.append(Paragraph(f"Security type: [Example WPA2-Personal]", styles['Normal']))
-            story.append(Paragraph(f"Network band: [Example 2.4 GHz]", styles['Normal']))
-            story.append(Paragraph(f"Network channel: [Example 9]", styles['Normal']))
+            # Additional network info
+            additional_data = [
+                ["SSID", ":", self.details.get('SSID', 'Not Available')],
+                ["Protocol", ":", self.network_details_app.get_wifi_protocol()],
+                ["Security type", ":", self.network_details_app.get_security_type()],
+                ["Network band", ":", self.network_details_app.get_network_band()],
+                ["Network channel", ":", self.network_details_app.get_network_channel()],
+                ["Manufacturer", ":", self.network_details_app.get_manufacturer()],
+                ["Description", ":", self.network_details_app.get_description()],
+                ["Driver version", ":", self.network_details_app.get_driver_version()],
+
+            ]
+            additional_table = Table(additional_data)
+            additional_table.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                                                  ('FONTSIZE', (0, 0), (-1, -1), 10),
+                                                  ('LEADING', (0, 0), (-1, -1), 18),  # Add 1.5 line spacing (approx)
+                                                  ]))
+            story.append(additional_table)
 
             story.append(Spacer(1, 0.2 * inch))
 
