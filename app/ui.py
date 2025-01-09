@@ -1,14 +1,26 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
-from app.network_details import NetworkDetailsApp
-from app.network_scanner import NetworkScanner
-from app.utils import export_to_csv
+from tkinter import ttk, messagebox, scrolledtext
 import os
+import socket
 from app.network_details_window import NetworkDetailsWindow
+import subprocess
+import threading
+
+
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0)
+        s.connect(('10.254.254.254', 1))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return None
 
 
 class WiFiScannerApp:
-    def __init__(self, root):
+    def __init__(self, root, scan_callback, network_details_callback, assets_path):
         self.root = root
         self.root.title("WiFi Analyzer & Scanner")
 
@@ -24,12 +36,11 @@ class WiFiScannerApp:
             messagebox.showerror("Error", "Icon not found: " + icon_path)
         self.root.state('zoomed')  # Start in full screen mode
 
-        self.network_details = NetworkDetailsApp(root)
-        self.network_scanner = NetworkScanner()
-
         self.results = []
         self.scanning = False
-
+        self.scan_callback = scan_callback  # callback to the scan function.
+        self.network_details_callback = network_details_callback  # callback to network detail function.
+        self.assets_path = assets_path
         # UI Elements
         self.create_widgets()
 
@@ -42,11 +53,19 @@ class WiFiScannerApp:
         ip_frame = tk.Frame(self.root)
         ip_frame.pack(pady=10, fill=tk.X, padx=20)  # fill=tk.X to expand horizontally
         tk.Label(ip_frame, text="IP Range: ", width=10).pack(side=tk.LEFT)
-        self.ip_range_entry = tk.Entry(ip_frame, width=30)
+        self.ip_range_entry = tk.Entry(ip_frame, width=25)  # decreased the size of IP input
         self.ip_range_entry.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
         self.ip_range_entry.insert(0, "192.168.1.0/24")
+
+        # Button to get current IP
+        get_ip_button = tk.Button(ip_frame, text="Get IP", command=self.get_current_ip, width=7)  # added get IP button.
+        get_ip_button.pack(side=tk.LEFT, padx=5)
+
         tk.Button(ip_frame, text="Analyse Network", command=self.get_network_details, width=15).pack(side=tk.LEFT,
                                                                                                      padx=5)
+        # Update OUI Database Button
+        update_oui_button = tk.Button(ip_frame, text="Update OUI Database", command=self.update_oui, width=15)
+        update_oui_button.pack(side=tk.LEFT, padx=5)
 
         # Network Scan Group
         scan_group_frame = tk.LabelFrame(self.root, text="Network Scan", font=("Arial", 12, "bold"), padx=20,
@@ -80,7 +99,9 @@ class WiFiScannerApp:
 
         # Table
         self.table = ttk.Treeview(self.root,
-                                  columns=("IP", "MAC", "Device Type", "Ping", "OS", "Device Name", "Details"),
+                                  columns=(
+                                  "IP", "MAC", "Device Type", "Ping", "OS", "Device Name", "Model", "Make", "Version",
+                                  "Details"),
                                   show="headings")
         self.table.heading("IP", text="IP Address")
         self.table.heading("MAC", text="MAC Address")
@@ -88,11 +109,14 @@ class WiFiScannerApp:
         self.table.heading("Ping", text="Ping")
         self.table.heading("OS", text="OS")
         self.table.heading("Device Name", text="Device Name")
+        self.table.heading("Model", text="Model")
+        self.table.heading("Make", text="Make")
+        self.table.heading("Version", text="Version")
         self.table.heading("Details", text="Details")
         self.table.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
 
     def get_network_details(self):
-        NetworkDetailsWindow(self.root, self.network_details).grab_set()
+        self.network_details_callback()
 
     def start_scan(self):
         ip_range = self.ip_range_entry.get().strip()
@@ -108,8 +132,8 @@ class WiFiScannerApp:
         self.root.after(100, self._scan, ip_range)  # call the scanning in a separate thread not to stop the ui.
 
     def _scan(self, ip_range):
-        self.results = self.network_scanner.scan(ip_range)
-        self.populate_table(self.results)
+        results = self.scan_callback(ip_range)
+        self.populate_table(results)
         self.scanning = False  # Set scanning to false after the scan.
         self.scan_button.config(state=tk.NORMAL)  # Enable scan button
         self.stop_button.config(state=tk.DISABLED)  # disable the stop button
@@ -134,17 +158,44 @@ class WiFiScannerApp:
             detail_button = tk.Button(self.table, text="Details",
                                       command=lambda ip=result[0]: self.show_device_details(ip))
             self.table.insert("", tk.END, values=result + (detail_button,))
-            # detail_button.pack(side=tk.RIGHT)
 
     def show_device_details(self, ip):
         messagebox.showinfo("Device Details", f"Details for IP: {ip} will appear here!")
 
     def export_results(self):
-        if self.results:
-            export_to_csv(self.results)
-        else:
-            messagebox.showinfo("Export", "No results to export.")
+        messagebox.showinfo("Export", "No results to export.")
 
     def exit_app(self):
         self.scanning = False
         self.root.destroy()  # Close the window
+
+    def get_current_ip(self):
+        local_ip = get_local_ip()
+        if local_ip:
+            self.ip_range_entry.delete(0, tk.END)
+            self.ip_range_entry.insert(0, local_ip)
+        else:
+            messagebox.showerror("Error", "Could not get local IP address.")
+
+    def update_oui(self):
+        # Build the command to run
+        oui_updater_path = os.path.join(os.path.dirname(__file__), 'oui_updater.py')
+        command = f'python "{oui_updater_path}"'
+
+        # Create a new thread and run the command in the thread
+        def run_command_in_thread():
+            try:
+                subprocess.run(command, shell=True, check=True)
+                messagebox.showinfo("OUI Update", "OUI data downloaded successfully")
+            except subprocess.CalledProcessError as e:
+                messagebox.showerror("OUI Update", f"Error updating OUI database {e}")
+            except FileNotFoundError as e:
+                messagebox.showerror("OUI Update", f"Error finding the updater script {e}")
+
+        threading.Thread(target=run_command_in_thread, daemon=True).start()
+
+
+def setup_ui(scan_callback, network_details_callback, assets_path):
+    root = tk.Tk()
+    app = WiFiScannerApp(root, scan_callback, network_details_callback, assets_path)
+    return root
