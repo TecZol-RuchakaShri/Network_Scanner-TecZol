@@ -1,2 +1,2 @@
 # Network_Scanner-TecZol
-Network Analyser and Sniffer 
+Python based Netowork Scanner With Set of analytical Tools.
