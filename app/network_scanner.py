@@ -8,40 +8,67 @@ import re
 import requests
 import json
 import os
+import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class NetworkScanner:
     def __init__(self):
         self.oui_data = self.load_oui_data()
+        self.api_key = "01jhq7f0txkh03mq13ygydzvtf01jhq7tprvw15vnbkenfjtdr5d4phqbuyywted"
 
     def load_oui_data(self):
         oui_path = os.path.join(os.path.dirname(__file__), '..', 'assets', 'oui.json')
-        if os.path.exists(oui_path):
-            with open(oui_path, 'r') as f:
-                return json.load(f)
-        else:
+        try:
+            if os.path.exists(oui_path):
+                with open(oui_path, 'r', encoding="utf-8") as f:
+                    return json.load(f)
+            else:
+                logging.error(f"OUI file not found: {oui_path}")
+                return {}
+        except FileNotFoundError:
+            logging.error(f"OUI file not found: {oui_path}")
+            return {}
+        except json.JSONDecodeError as e:
+            logging.error(f"Error decoding json: {e}")
+            return {}
+        except Exception as e:
+            logging.error(f"An unexpected error occurred while loading oui data: {e}")
             return {}
 
     def scan(self, ip_range):
-        results = []
+        logging.debug(f"Starting scan for IP range: {ip_range}")
         try:
-            packet = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=ip_range)
-            responses, _ = srp(packet, timeout=2, verbose=0)
-            for _, received in responses:
-                ip = received.psrc
-                mac = received.hwsrc
-                device_type = self.get_device_type(mac)
-                ping = self.ping(ip)
-                os_info = self.get_os_info(ip)
-                device_name = self.get_device_name(ip)
-                model_info = self.get_model_info(mac)
+            if "/" not in ip_range:
+                ip_range = ip_range + "/24"  # default to /24 if subnet mask is not specified.
+            subnet = ip_network(ip_range, False)
+            total_ips = len(list(subnet))
+            scanned_ips = 0
+            for target_ip in subnet:
+                logging.debug(f"Scanning IP: {target_ip}")
+                try:
+                    packet = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=str(target_ip))
+                    responses, unanswered = srp(packet, timeout=1, verbose=0)
 
-                results.append((ip, mac, device_type, f"{ping:.2f} ms" if ping else "Unreachable", os_info, device_name,
-                                model_info.get("model", "Unknown"), model_info.get("make", "Unknown"),
-                                model_info.get("version", "Unknown")))
+                    for _, received in responses:
+                        ip = received.psrc
+                        mac = received.hwsrc
+                        yield {"ip": ip, "mac": mac}
+                        logging.debug(f"Added basic result for IP: {ip}, MAC: {mac}")
+                except Exception as e:
+                    logging.error(f"Error during scan of IP: {target_ip} Error: {e}")
+                    yield {"ip": None, "mac": None, "error": str(e)}
+
+                scanned_ips += 1
+                progress = int((scanned_ips / total_ips) * 100)
+                yield "Progress", progress
+
         except Exception as e:
-            results.append(f"Error during scan: {e}")
-        return results
+            logging.error(f"Error during subnet creation or iteration : {e}")
+            yield {"ip": None, "mac": None, "error": str(e)}
+
+        logging.debug(f"Scan finished.")
 
     def validate_ip(self, ip):
         try:
@@ -112,13 +139,23 @@ class NetworkScanner:
 
     def get_model_info(self, mac):
         try:
-            oui = mac.replace(":", "")[:6]
-            #  API lookup (replace with your chosen API)
-            url = f"https://api.macvendors.com/{oui}"  # using macvendors API
-            response = requests.get(url)
-            if response.status_code == 200:
-                return {"model": "Unknown", "make": response.text.strip(), "version": "Unknown"}
+            url = f"https://api.maclookup.app/v2/macs/{mac}?apiKey={self.api_key}"
+            response = requests.get(url, timeout=5)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get("success") == True:
+                vendor = data.get("company", "Unknown")
+                model = data.get("model", "Unknown")
+                device_name = data.get("device_name", "Unknown")
+                return {"model": model, "make": vendor, "version": device_name}
             else:
+                logging.debug(f"API error for MAC {mac}: {data.get('message', 'Unknown error')}")
                 return {"model": "Unknown", "make": "Unknown", "version": "Unknown"}
+
+        except requests.exceptions.RequestException as e:
+            logging.error(f"API request error for MAC {mac}: {e}")
+            return {"model": "Unknown", "make": "Unknown", "version": "Unknown"}
         except Exception as e:
+            logging.error(f"An unexpected error occurred during get model info : {e}")
             return {"model": "Unknown", "make": "Unknown", "version": "Unknown"}

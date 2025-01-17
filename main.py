@@ -3,7 +3,6 @@ import os
 from app.ui import setup_ui
 from app.network_scanner import NetworkScanner
 
-
 def scan_callback(ip_range):
     scanner = NetworkScanner()
     results = scanner.scan(ip_range)
@@ -17,8 +16,9 @@ def network_details_callback():
     NetworkDetailsWindow(root, details_app).grab_set()
 
 if __name__ == '__main__':
-    root = tk.Tk()
     current_dir = os.path.dirname(__file__)
     assets_path = os.path.join(current_dir, 'assets')
-    setup_ui(scan_callback, network_details_callback, assets_path)
+    scanner = NetworkScanner()
+    root = setup_ui(scan_callback, network_details_callback, assets_path, scanner)
     root.mainloop()
+
